@@ -8,7 +8,7 @@ import type {
   Vote,
 } from '../types';
 
-/** Volledige lokale dataset. Vorm van de "database" — handig als export/import shape. */
+/** Samengevoegde weergave van alle groepen die dit toestel kent (uit Supabase + lokale identiteiten). */
 export interface KookavondData {
   groups: Group[];
   members: Member[];
@@ -18,17 +18,3 @@ export interface KookavondData {
   courseAssignments: CourseAssignment[];
   identities: LocalIdentities;
 }
-
-export function emptyData(): KookavondData {
-  return {
-    groups: [],
-    members: [],
-    events: [],
-    pollOptions: [],
-    votes: [],
-    courseAssignments: [],
-    identities: {},
-  };
-}
-
-export const STORAGE_KEY = 'kookavond:data:v1';

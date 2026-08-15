@@ -1,18 +1,42 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { assignCourses } from '../logic/courseAssignment';
 import { toIsoDate } from '../logic/format';
 import { generateId, generateInviteCode } from '../logic/ids';
 import { suggestTheme } from '../logic/themeRotation';
-import { AsyncStorageDataStore } from '../storage/AsyncStorageDataStore';
-import type { DataStore } from '../storage/DataStore';
-import { emptyData, type KookavondData } from '../storage/schema';
-import type { Course, Group, KitchenTheme, KookEvent, Member, VoteResponse } from '../types';
-
-const store: DataStore = new AsyncStorageDataStore();
+import { loadIdentities, saveIdentities } from '../storage/identityStore';
+import type { KookavondData } from '../storage/schema';
+import {
+  confirmEventWithAssignments,
+  deleteEvent,
+  fetchGroupBundle,
+  findGroupByCode,
+  insertEventWithOptions,
+  insertGroup,
+  insertMember,
+  subscribeToGroup,
+  updateCourseAssignment as remoteUpdateCourseAssignment,
+  updateTheme as remoteUpdateTheme,
+  upsertVote,
+  type GroupBundle,
+} from '../storage/supabaseRepository';
+import type { Course, Group, KitchenTheme, KookEvent, LocalIdentities, Member, VoteResponse } from '../types';
 
 function todayIso(): string {
   return toIsoDate(new Date());
+}
+
+function mergeData(bundles: Record<string, GroupBundle>, identities: LocalIdentities): KookavondData {
+  const values = Object.values(bundles);
+  return {
+    groups: values.map((b) => b.group),
+    members: values.flatMap((b) => b.members),
+    events: values.flatMap((b) => b.events),
+    pollOptions: values.flatMap((b) => b.pollOptions),
+    votes: values.flatMap((b) => b.votes),
+    courseAssignments: values.flatMap((b) => b.courseAssignments),
+    identities,
+  };
 }
 
 interface DataContextValue {
@@ -47,20 +71,52 @@ interface DataContextValue {
 const DataContext = createContext<DataContextValue | undefined>(undefined);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<KookavondData>(emptyData());
+  const [identities, setIdentities] = useState<LocalIdentities>({});
+  const [bundles, setBundles] = useState<Record<string, GroupBundle>>({});
   const [loading, setLoading] = useState(true);
+  const subscriptions = useRef<Record<string, () => void>>({});
+
+  const refreshGroup = useCallback(async (groupId: string) => {
+    const bundle = await fetchGroupBundle(groupId);
+    setBundles((prev) => ({ ...prev, [groupId]: bundle }));
+  }, []);
+
+  const ensureSubscribed = useCallback(
+    (groupId: string) => {
+      if (subscriptions.current[groupId]) return;
+      subscriptions.current[groupId] = subscribeToGroup(groupId, () => {
+        refreshGroup(groupId);
+      });
+    },
+    [refreshGroup],
+  );
 
   useEffect(() => {
-    store.load().then((loaded) => {
-      setData(loaded);
-      setLoading(false);
+    let cancelled = false;
+    loadIdentities().then(async (loaded) => {
+      if (cancelled) return;
+      setIdentities(loaded);
+      const groupIds = Object.keys(loaded);
+      await Promise.all(
+        groupIds.map(async (groupId) => {
+          try {
+            await refreshGroup(groupId);
+            ensureSubscribed(groupId);
+          } catch {
+            // Groep kon niet geladen worden (bv. offline); blijft gewoon ontbreken in state.
+          }
+        }),
+      );
+      if (!cancelled) setLoading(false);
     });
+    return () => {
+      cancelled = true;
+      Object.values(subscriptions.current).forEach((unsub) => unsub());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const persist = useCallback((next: KookavondData) => {
-    setData(next);
-    store.save(next);
-  }, []);
+  const data = useMemo(() => mergeData(bundles, identities), [bundles, identities]);
 
   const getGroup = useCallback((groupId: string) => data.groups.find((g) => g.id === groupId), [data.groups]);
 
@@ -69,7 +125,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [data.members],
   );
 
-  const getMyMemberId = useCallback((groupId: string) => data.identities[groupId], [data.identities]);
+  const getMyMemberId = useCallback((groupId: string) => identities[groupId], [identities]);
 
   const isOrganizer = useCallback(
     (groupId: string) => {
@@ -80,57 +136,58 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [getGroup, getMyMemberId],
   );
 
-  const myGroups = useMemo(
-    () => data.groups.filter((g) => !!data.identities[g.id]),
-    [data.groups, data.identities],
-  );
+  const myGroups = useMemo(() => data.groups.filter((g) => !!identities[g.id]), [data.groups, identities]);
 
-  const createGroup = useCallback(
-    async (groupName: string, myName: string) => {
-      const groupId = generateId();
-      const memberId = generateId();
-      const now = new Date().toISOString();
-      const group: Group = {
-        id: groupId,
-        name: groupName.trim(),
-        inviteCode: generateInviteCode(),
-        organizerMemberId: memberId,
-        createdAt: now,
-      };
-      const member: Member = { id: memberId, groupId, name: myName.trim(), createdAt: now };
-      persist({
-        ...data,
-        groups: [...data.groups, group],
-        members: [...data.members, member],
-        identities: { ...data.identities, [groupId]: memberId },
-      });
-      return groupId;
-    },
-    [data, persist],
-  );
+  const createGroup = useCallback(async (groupName: string, myName: string) => {
+    const groupId = generateId();
+    const memberId = generateId();
+    const now = new Date().toISOString();
+    const group: Group = {
+      id: groupId,
+      name: groupName.trim(),
+      inviteCode: generateInviteCode(),
+      organizerMemberId: memberId,
+      createdAt: now,
+    };
+    const member: Member = { id: memberId, groupId, name: myName.trim(), createdAt: now };
 
-  const joinGroup = useCallback(
-    async (code: string, myName: string) => {
-      const normalized = code.trim().toUpperCase();
-      const group = data.groups.find((g) => g.inviteCode === normalized);
-      if (!group) {
-        throw new Error('Geen groep gevonden met deze code. Controleer de code en probeer opnieuw.');
-      }
-      const existingMemberId = data.identities[group.id];
-      if (existingMemberId) {
-        return group.id;
-      }
-      const memberId = generateId();
-      const member: Member = { id: memberId, groupId: group.id, name: myName.trim(), createdAt: new Date().toISOString() };
-      persist({
-        ...data,
-        members: [...data.members, member],
-        identities: { ...data.identities, [group.id]: memberId },
-      });
+    await insertGroup(group);
+    await insertMember(member);
+
+    const nextIdentities = { ...identities, [groupId]: memberId };
+    setIdentities(nextIdentities);
+    await saveIdentities(nextIdentities);
+    await refreshGroup(groupId);
+    ensureSubscribed(groupId);
+
+    return groupId;
+  }, [identities, refreshGroup, ensureSubscribed]);
+
+  const joinGroup = useCallback(async (code: string, myName: string) => {
+    const normalized = code.trim().toUpperCase();
+    const group = await findGroupByCode(normalized);
+    if (!group) {
+      throw new Error('Geen groep gevonden met deze code. Controleer de code en probeer opnieuw.');
+    }
+
+    if (identities[group.id]) {
+      await refreshGroup(group.id);
+      ensureSubscribed(group.id);
       return group.id;
-    },
-    [data, persist],
-  );
+    }
+
+    const memberId = generateId();
+    const member: Member = { id: memberId, groupId: group.id, name: myName.trim(), createdAt: new Date().toISOString() };
+    await insertMember(member);
+
+    const nextIdentities = { ...identities, [group.id]: memberId };
+    setIdentities(nextIdentities);
+    await saveIdentities(nextIdentities);
+    await refreshGroup(group.id);
+    ensureSubscribed(group.id);
+
+    return group.id;
+  }, [identities, refreshGroup, ensureSubscribed]);
 
   const getActivePoll = useCallback(
     (groupId: string) => data.events.find((e) => e.groupId === groupId && e.status === 'poll'),
@@ -159,40 +216,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const getEvent = useCallback((eventId: string) => data.events.find((e) => e.id === eventId), [data.events]);
 
-  const createPoll = useCallback(
-    async (groupId: string, dates: string[]) => {
-      const myId = data.identities[groupId];
-      if (!myId) throw new Error('Je bent geen lid van deze groep.');
-      const eventId = generateId();
-      const now = new Date().toISOString();
-      const event: KookEvent = {
-        id: eventId,
-        groupId,
-        status: 'poll',
-        createdByMemberId: myId,
-        createdAt: now,
-      };
-      const options = dates.map((date) => ({ id: generateId(), eventId, date }));
-      persist({
-        ...data,
-        events: [...data.events, event],
-        pollOptions: [...data.pollOptions, ...options],
-      });
-      return eventId;
-    },
-    [data, persist],
-  );
+  const createPoll = useCallback(async (groupId: string, dates: string[]) => {
+    const myId = identities[groupId];
+    if (!myId) throw new Error('Je bent geen lid van deze groep.');
+    const eventId = generateId();
+    const now = new Date().toISOString();
+    const event: KookEvent = { id: eventId, groupId, status: 'poll', createdByMemberId: myId, createdAt: now };
+    const options = dates.map((date) => ({ id: generateId(), eventId, date }));
 
-  const castVote = useCallback(
-    async (pollOptionId: string, memberId: string, response: VoteResponse) => {
-      const existing = data.votes.find((v) => v.pollOptionId === pollOptionId && v.memberId === memberId);
-      const votes = existing
-        ? data.votes.map((v) => (v.id === existing.id ? { ...v, response } : v))
-        : [...data.votes, { id: generateId(), pollOptionId, memberId, response }];
-      persist({ ...data, votes });
-    },
-    [data, persist],
-  );
+    await insertEventWithOptions(event, options);
+    await refreshGroup(groupId);
+    return eventId;
+  }, [identities, refreshGroup]);
+
+  const castVote = useCallback(async (pollOptionId: string, memberId: string, response: VoteResponse) => {
+    const option = data.pollOptions.find((o) => o.id === pollOptionId);
+    if (!option) return;
+    const event = data.events.find((e) => e.id === option.eventId);
+    if (!event) return;
+    const existing = data.votes.find((v) => v.pollOptionId === pollOptionId && v.memberId === memberId);
+
+    await upsertVote(event.groupId, { id: existing?.id ?? generateId(), pollOptionId, memberId, response });
+    await refreshGroup(event.groupId);
+  }, [data.pollOptions, data.events, data.votes, refreshGroup]);
 
   const myVoteFor = useCallback(
     (pollOptionId: string, memberId: string) =>
@@ -200,100 +246,75 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [data.votes],
   );
 
-  const cancelPoll = useCallback(
-    async (eventId: string) => {
-      persist({
-        ...data,
-        events: data.events.filter((e) => e.id !== eventId),
-        pollOptions: data.pollOptions.filter((o) => o.eventId !== eventId),
-        votes: data.votes.filter((v) => !data.pollOptions.some((o) => o.eventId === eventId && o.id === v.pollOptionId)),
-      });
-    },
-    [data, persist],
-  );
+  const cancelPoll = useCallback(async (eventId: string) => {
+    const event = data.events.find((e) => e.id === eventId);
+    if (!event) return;
+    await deleteEvent(eventId);
+    await refreshGroup(event.groupId);
+  }, [data.events, refreshGroup]);
 
-  const confirmEvent = useCallback(
-    async (eventId: string, chosenDate: string) => {
-      const event = data.events.find((e) => e.id === eventId);
-      if (!event) return;
+  const confirmEvent = useCallback(async (eventId: string, chosenDate: string) => {
+    const event = data.events.find((e) => e.id === eventId);
+    if (!event) return;
 
-      const optionsForEvent = data.pollOptions.filter((o) => o.eventId === eventId);
-      const chosenOption = optionsForEvent.find((o) => o.date === chosenDate);
-      const groupMembers = data.members.filter((m) => m.groupId === event.groupId);
+    const optionsForEvent = data.pollOptions.filter((o) => o.eventId === eventId);
+    const chosenOption = optionsForEvent.find((o) => o.date === chosenDate);
+    const groupMembers = data.members.filter((m) => m.groupId === event.groupId);
 
-      let attendeeIds: string[] = [];
-      if (chosenOption) {
-        attendeeIds = data.votes
-          .filter((v) => v.pollOptionId === chosenOption.id && v.response === 'ja')
-          .map((v) => v.memberId);
-      }
-      if (attendeeIds.length === 0) {
-        attendeeIds = groupMembers.map((m) => m.id);
-      }
+    let attendeeIds: string[] = [];
+    if (chosenOption) {
+      attendeeIds = data.votes
+        .filter((v) => v.pollOptionId === chosenOption.id && v.response === 'ja')
+        .map((v) => v.memberId);
+    }
+    if (attendeeIds.length === 0) {
+      attendeeIds = groupMembers.map((m) => m.id);
+    }
 
-      const pastGroupEvents = data.events.filter(
-        (e) => e.groupId === event.groupId && e.status === 'confirmed' && e.id !== eventId,
-      );
-      const courseHistory = data.courseAssignments.filter((ca) =>
-        pastGroupEvents.some((e) => e.id === ca.eventId),
-      );
+    const pastGroupEvents = data.events.filter(
+      (e) => e.groupId === event.groupId && e.status === 'confirmed' && e.id !== eventId,
+    );
+    const courseHistory = data.courseAssignments.filter((ca) => pastGroupEvents.some((e) => e.id === ca.eventId));
 
-      const assignment = assignCourses(attendeeIds, courseHistory);
-      const newAssignments = Object.entries(assignment).map(([memberId, course]) => ({
-        id: generateId(),
-        eventId,
-        memberId,
-        course,
-      }));
+    const assignment = assignCourses(attendeeIds, courseHistory);
+    const newAssignments = Object.entries(assignment).map(([memberId, course]) => ({
+      id: generateId(),
+      eventId,
+      memberId,
+      course,
+    }));
 
-      const theme = suggestTheme(pastGroupEvents);
+    const theme = suggestTheme(pastGroupEvents);
 
-      const updatedEvent: KookEvent = { ...event, status: 'confirmed', confirmedDate: chosenDate, theme };
+    await confirmEventWithAssignments(eventId, event.groupId, chosenDate, theme, newAssignments);
+    await refreshGroup(event.groupId);
+  }, [data.events, data.pollOptions, data.members, data.votes, data.courseAssignments, refreshGroup]);
 
-      persist({
-        ...data,
-        events: data.events.map((e) => (e.id === eventId ? updatedEvent : e)),
-        courseAssignments: [...data.courseAssignments, ...newAssignments],
-      });
-    },
-    [data, persist],
-  );
+  const overrideTheme = useCallback(async (eventId: string, theme: KitchenTheme) => {
+    const event = data.events.find((e) => e.id === eventId);
+    if (!event) return;
+    await remoteUpdateTheme(eventId, theme);
+    await refreshGroup(event.groupId);
+  }, [data.events, refreshGroup]);
 
-  const overrideTheme = useCallback(
-    async (eventId: string, theme: KitchenTheme) => {
-      persist({ ...data, events: data.events.map((e) => (e.id === eventId ? { ...e, theme } : e)) });
-    },
-    [data, persist],
-  );
+  const swapCourseAssignments = useCallback(async (eventId: string, memberIdA: string, memberIdB: string) => {
+    const event = data.events.find((e) => e.id === eventId);
+    if (!event) return;
+    const a = data.courseAssignments.find((ca) => ca.eventId === eventId && ca.memberId === memberIdA);
+    const b = data.courseAssignments.find((ca) => ca.eventId === eventId && ca.memberId === memberIdB);
+    if (!a || !b) return;
 
-  const swapCourseAssignments = useCallback(
-    async (eventId: string, memberIdA: string, memberIdB: string) => {
-      const a = data.courseAssignments.find((ca) => ca.eventId === eventId && ca.memberId === memberIdA);
-      const b = data.courseAssignments.find((ca) => ca.eventId === eventId && ca.memberId === memberIdB);
-      if (!a || !b) return;
-      persist({
-        ...data,
-        courseAssignments: data.courseAssignments.map((ca) => {
-          if (ca.id === a.id) return { ...ca, course: b.course };
-          if (ca.id === b.id) return { ...ca, course: a.course };
-          return ca;
-        }),
-      });
-    },
-    [data, persist],
-  );
+    await remoteUpdateCourseAssignment(eventId, memberIdA, b.course);
+    await remoteUpdateCourseAssignment(eventId, memberIdB, a.course);
+    await refreshGroup(event.groupId);
+  }, [data.events, data.courseAssignments, refreshGroup]);
 
-  const reassignCourse = useCallback(
-    async (eventId: string, memberId: string, course: Course) => {
-      persist({
-        ...data,
-        courseAssignments: data.courseAssignments.map((ca) =>
-          ca.eventId === eventId && ca.memberId === memberId ? { ...ca, course } : ca,
-        ),
-      });
-    },
-    [data, persist],
-  );
+  const reassignCourse = useCallback(async (eventId: string, memberId: string, course: Course) => {
+    const event = data.events.find((e) => e.id === eventId);
+    if (!event) return;
+    await remoteUpdateCourseAssignment(eventId, memberId, course);
+    await refreshGroup(event.groupId);
+  }, [data.events, refreshGroup]);
 
   const value: DataContextValue = {
     loading,
