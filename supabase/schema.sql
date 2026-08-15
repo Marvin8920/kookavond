@@ -16,6 +16,7 @@ create table groups (
   id text primary key,
   name text not null,
   invite_code text not null unique,
+  group_type text not null default 'random',
   organizer_member_id text not null,
   created_at timestamptz not null default now()
 );

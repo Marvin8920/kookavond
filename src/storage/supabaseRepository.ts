@@ -1,11 +1,10 @@
 import { supabase } from './supabaseClient';
 import type {
+  AssignmentItem,
   ChatMessage,
-  Course,
   CourseAssignment,
   DatePollOption,
   Group,
-  KitchenTheme,
   KookEvent,
   Member,
   Vote,
@@ -25,6 +24,7 @@ function toGroup(row: any): Group {
     id: row.id,
     name: row.name,
     inviteCode: row.invite_code,
+    groupType: row.group_type,
     organizerMemberId: row.organizer_member_id,
     createdAt: row.created_at,
   };
@@ -100,6 +100,7 @@ export async function insertGroup(group: Group): Promise<void> {
     id: group.id,
     name: group.name,
     invite_code: group.inviteCode,
+    group_type: group.groupType,
     organizer_member_id: group.organizerMemberId,
     created_at: group.createdAt,
   });
@@ -156,7 +157,7 @@ export async function confirmEventWithAssignments(
   eventId: string,
   groupId: string,
   chosenDate: string,
-  theme: KitchenTheme,
+  theme: string,
   assignments: CourseAssignment[],
 ): Promise<void> {
   const { error: eventError } = await supabase
@@ -173,12 +174,12 @@ export async function confirmEventWithAssignments(
   }
 }
 
-export async function updateTheme(eventId: string, theme: KitchenTheme): Promise<void> {
+export async function updateTheme(eventId: string, theme: string): Promise<void> {
   const { error } = await supabase.from('events').update({ theme }).eq('id', eventId);
   if (error) throw new Error(error.message);
 }
 
-export async function updateCourseAssignment(eventId: string, memberId: string, course: Course): Promise<void> {
+export async function updateCourseAssignment(eventId: string, memberId: string, course: AssignmentItem): Promise<void> {
   const { error } = await supabase
     .from('course_assignments')
     .update({ course })

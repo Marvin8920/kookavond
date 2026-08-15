@@ -13,6 +13,7 @@ import { useData } from '../../../src/context/DataContext';
 import { formatDateNl } from '../../../src/logic/format';
 import { buildInviteLink, buildInviteMessage } from '../../../src/logic/inviteLink';
 import { tallyOptions } from '../../../src/logic/votes';
+import { GROUP_TYPE_LABELS } from '../../../src/types';
 
 export default function GroupOverviewScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
@@ -80,6 +81,8 @@ export default function GroupOverviewScreen() {
 
   return (
     <Screen>
+      <Badge label={GROUP_TYPE_LABELS[group.groupType]} />
+
       <Card>
         <Pressable onPress={copyCode}>
           <Text style={typography.muted}>Uitnodigingscode</Text>

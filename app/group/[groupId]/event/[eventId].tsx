@@ -8,15 +8,17 @@ import { ChatPanel } from '../../../../src/components/ChatPanel';
 import { Screen } from '../../../../src/components/Screen';
 import { colors, radius, spacing, typography } from '../../../../src/constants/theme';
 import { useData } from '../../../../src/context/DataContext';
-import { COURSE_LABELS } from '../../../../src/types';
+import { itemLabel, KITCHEN_THEMES } from '../../../../src/types';
 import { formatDateNl } from '../../../../src/logic/format';
-import { KITCHEN_THEMES, type KitchenTheme } from '../../../../src/types';
 
 export default function EventDetailScreen() {
   const { groupId, eventId } = useLocalSearchParams<{ groupId: string; eventId: string }>();
-  const { data, getEvent, getMembers, getMyMemberId, isOrganizer, overrideTheme, swapCourseAssignments } = useData();
+  const { data, getGroup, getEvent, getMembers, getMyMemberId, isOrganizer, overrideTheme, swapCourseAssignments } =
+    useData();
 
   const event = getEvent(eventId);
+  const group = getGroup(groupId);
+  const groupType = group?.groupType ?? 'random';
   const members = getMembers(groupId);
   const myMemberId = getMyMemberId(groupId);
   const organizer = isOrganizer(groupId);
@@ -61,21 +63,21 @@ export default function EventDetailScreen() {
         <Text style={typography.muted}>{formatDateNl(event.confirmedDate ?? '')}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={typography.title}>{event.theme ?? 'Thema volgt'}</Text>
-          {organizer ? (
+          {organizer && groupType !== 'bbq' ? (
             <Pressable onPress={() => setThemePickerOpen((v) => !v)}>
               <Text style={{ color: colors.primary, fontWeight: '600' }}>Wijzig</Text>
             </Pressable>
           ) : null}
         </View>
 
-        {themePickerOpen ? (
+        {themePickerOpen && groupType !== 'bbq' ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.xs }}>
             <View style={{ flexDirection: 'row', gap: spacing.xs }}>
               {KITCHEN_THEMES.map((theme) => (
                 <Pressable
                   key={theme}
                   onPress={() => {
-                    overrideTheme(eventId, theme as KitchenTheme);
+                    overrideTheme(eventId, theme);
                     setThemePickerOpen(false);
                   }}
                   style={{
@@ -96,10 +98,13 @@ export default function EventDetailScreen() {
       </Card>
 
       <View style={{ gap: spacing.sm }}>
-        <Text style={typography.heading}>Gangenverdeling</Text>
+        <Text style={typography.heading}>{groupType === 'bbq' ? 'Wie neemt wat mee' : 'Gangenverdeling'}</Text>
         <Text style={typography.muted}>
-          {swapSelection ? 'Kies wie ermee moet ruilen…' : 'Tik op twee namen om gangen te ruilen.'}
+          {swapSelection ? 'Kies wie ermee moet ruilen…' : 'Tik op twee namen om te ruilen.'}
         </Text>
+        {groupType === 'bbq' ? (
+          <Text style={typography.muted}>Drank neemt iedereen zelf mee.</Text>
+        ) : null}
         {attendees.map(({ assignment, member }) => {
           const selected = swapSelection === member.id;
           return (
@@ -109,7 +114,7 @@ export default function EventDetailScreen() {
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={typography.body}>{member.name}</Text>
-                  <Badge label={COURSE_LABELS[assignment.course]} />
+                  <Badge label={itemLabel(groupType, assignment.course)} />
                 </View>
               </Card>
             </Pressable>

@@ -1,25 +1,24 @@
-import { ALL_COURSES, CORE_COURSES, type Course, type CourseAssignment, type Member } from '../types';
-
-const SHORTAGE_PRIORITY: Course[] = ['hoofdgerecht', 'voorgerecht', 'nagerecht', 'borrelhapje'];
+import { priorityForGroupType, type AssignmentItem, type CourseAssignment, type GroupType, type Member } from '../types';
 
 /**
- * Bepaalt welke gangen er die avond gedaan worden, 1 slot per aanwezige.
- * - 4+ aanwezigen: alle 4 gangen (incl. borrelhapje), extra aanwezigen delen gangen (team van 2).
- * - <4 aanwezigen: kernnagangen (voor/hoofd/na), bij tekort eerst hoofdgerecht, dan voor-, dan nagerecht.
- * - Meer aanwezigen dan gangtypes: gangen worden herhaald (round robin) zodat iedereen een slot heeft.
+ * Bepaalt welke items er die avond verdeeld worden (gangen voor "random",
+ * BBQ-categorieën voor "bbq"), 1 slot per aanwezige.
+ * - Genoeg aanwezigen: alle items uit de prioriteitenlijst voor dit groepstype.
+ * - Te weinig aanwezigen: eerste N items uit de prioriteitenlijst (belangrijkste eerst).
+ * - Meer aanwezigen dan itemtypes: items worden herhaald (round robin) zodat iedereen een slot heeft.
  */
-export function determineCourseSlots(attendeeCount: number): Course[] {
+export function determineCourseSlots(groupType: GroupType, attendeeCount: number): AssignmentItem[] {
   if (attendeeCount <= 0) return [];
 
-  const baseCourses = attendeeCount >= 4 ? ALL_COURSES : CORE_COURSES;
+  const priority = priorityForGroupType(groupType);
 
-  if (attendeeCount < baseCourses.length) {
-    return SHORTAGE_PRIORITY.filter((c) => baseCourses.includes(c)).slice(0, attendeeCount);
+  if (attendeeCount <= priority.length) {
+    return priority.slice(0, attendeeCount);
   }
 
-  const slots: Course[] = [];
+  const slots: AssignmentItem[] = [];
   for (let i = 0; i < attendeeCount; i++) {
-    slots.push(baseCourses[i % baseCourses.length]);
+    slots.push(priority[i % priority.length]);
   }
   return slots;
 }
@@ -37,26 +36,27 @@ function compareScore(a: Score, b: Score): number {
 }
 
 /**
- * Verdeelt de gangslots eerlijk over de aanwezige leden, op basis van de
+ * Verdeelt de slots eerlijk over de aanwezige leden, op basis van de
  * geschiedenis van eerdere kookavonden in de groep (courseHistory).
  *
- * Greedy min-cost matching: kiest steeds de (lid, gang)-combinatie waarbij dat
- * lid die specifieke gang het minst vaak eerder deed (bij gelijke stand: wie
- * in totaal het minst vaak een gang deed, dan alfabetisch voor determinisme).
+ * Greedy min-cost matching: kiest steeds de (lid, item)-combinatie waarbij dat
+ * lid dat specifieke item het minst vaak eerder deed (bij gelijke stand: wie
+ * in totaal het minst vaak iets deed, dan alfabetisch voor determinisme).
  */
 export function assignCourses(
+  groupType: GroupType,
   attendeeMemberIds: string[],
   courseHistory: CourseAssignment[],
-): Record<string, Course> {
-  const slots = determineCourseSlots(attendeeMemberIds.length);
+): Record<string, AssignmentItem> {
+  const slots = determineCourseSlots(groupType, attendeeMemberIds.length);
 
-  const courseCountFor = (memberId: string, course: Course) =>
+  const courseCountFor = (memberId: string, course: AssignmentItem) =>
     courseHistory.filter((h) => h.memberId === memberId && h.course === course).length;
   const totalCountFor = (memberId: string) => courseHistory.filter((h) => h.memberId === memberId).length;
 
   const remainingMembers = [...attendeeMemberIds];
   const remainingSlots = slots.map((course, idx) => ({ course, idx }));
-  const assignment: Record<string, Course> = {};
+  const assignment: Record<string, AssignmentItem> = {};
 
   while (remainingMembers.length > 0 && remainingSlots.length > 0) {
     let bestMemberIdx = -1;

@@ -20,7 +20,8 @@ import {
   upsertVote,
   type GroupBundle,
 } from '../storage/supabaseRepository';
-import type { Course, Group, KitchenTheme, KookEvent, LocalIdentities, Member, VoteResponse } from '../types';
+import { BBQ_FIXED_THEME } from '../types';
+import type { AssignmentItem, Group, GroupType, KookEvent, LocalIdentities, Member, VoteResponse } from '../types';
 
 function todayIso(): string {
   return toIsoDate(new Date());
@@ -49,7 +50,7 @@ interface DataContextValue {
   getMyMemberId: (groupId: string) => string | undefined;
   isOrganizer: (groupId: string) => boolean;
 
-  createGroup: (groupName: string, myName: string) => Promise<string>;
+  createGroup: (groupName: string, myName: string, groupType: GroupType) => Promise<string>;
   joinGroup: (code: string, myName: string) => Promise<string>;
 
   getActivePoll: (groupId: string) => KookEvent | undefined;
@@ -63,9 +64,9 @@ interface DataContextValue {
   cancelPoll: (eventId: string) => Promise<void>;
 
   confirmEvent: (eventId: string, chosenDate: string) => Promise<void>;
-  overrideTheme: (eventId: string, theme: KitchenTheme) => Promise<void>;
+  overrideTheme: (eventId: string, theme: string) => Promise<void>;
   swapCourseAssignments: (eventId: string, memberIdA: string, memberIdB: string) => Promise<void>;
-  reassignCourse: (eventId: string, memberId: string, course: Course) => Promise<void>;
+  reassignCourse: (eventId: string, memberId: string, course: AssignmentItem) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -138,7 +139,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const myGroups = useMemo(() => data.groups.filter((g) => !!identities[g.id]), [data.groups, identities]);
 
-  const createGroup = useCallback(async (groupName: string, myName: string) => {
+  const createGroup = useCallback(async (groupName: string, myName: string, groupType: GroupType) => {
     const groupId = generateId();
     const memberId = generateId();
     const now = new Date().toISOString();
@@ -146,6 +147,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       id: groupId,
       name: groupName.trim(),
       inviteCode: generateInviteCode(),
+      groupType,
       organizerMemberId: memberId,
       createdAt: now,
     };
@@ -276,7 +278,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     );
     const courseHistory = data.courseAssignments.filter((ca) => pastGroupEvents.some((e) => e.id === ca.eventId));
 
-    const assignment = assignCourses(attendeeIds, courseHistory);
+    const group = data.groups.find((g) => g.id === event.groupId);
+    const groupType: GroupType = group?.groupType ?? 'random';
+
+    const assignment = assignCourses(groupType, attendeeIds, courseHistory);
     const newAssignments = Object.entries(assignment).map(([memberId, course]) => ({
       id: generateId(),
       eventId,
@@ -284,13 +289,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       course,
     }));
 
-    const theme = suggestTheme(pastGroupEvents);
+    const theme = groupType === 'bbq' ? BBQ_FIXED_THEME : suggestTheme(pastGroupEvents);
 
     await confirmEventWithAssignments(eventId, event.groupId, chosenDate, theme, newAssignments);
     await refreshGroup(event.groupId);
-  }, [data.events, data.pollOptions, data.members, data.votes, data.courseAssignments, refreshGroup]);
+  }, [data.events, data.pollOptions, data.members, data.votes, data.courseAssignments, data.groups, refreshGroup]);
 
-  const overrideTheme = useCallback(async (eventId: string, theme: KitchenTheme) => {
+  const overrideTheme = useCallback(async (eventId: string, theme: string) => {
     const event = data.events.find((e) => e.id === eventId);
     if (!event) return;
     await remoteUpdateTheme(eventId, theme);
@@ -309,7 +314,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await refreshGroup(event.groupId);
   }, [data.events, data.courseAssignments, refreshGroup]);
 
-  const reassignCourse = useCallback(async (eventId: string, memberId: string, course: Course) => {
+  const reassignCourse = useCallback(async (eventId: string, memberId: string, course: AssignmentItem) => {
     const event = data.events.find((e) => e.id === eventId);
     if (!event) return;
     await remoteUpdateCourseAssignment(eventId, memberId, course);

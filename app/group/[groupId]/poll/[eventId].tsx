@@ -12,7 +12,7 @@ import { useData } from '../../../../src/context/DataContext';
 import { formatDateNl } from '../../../../src/logic/format';
 import { suggestTheme } from '../../../../src/logic/themeRotation';
 import { leadingOption, tallyOptions } from '../../../../src/logic/votes';
-import type { VoteResponse } from '../../../../src/types';
+import { BBQ_FIXED_THEME, type VoteResponse } from '../../../../src/types';
 
 const RESPONSES: { value: VoteResponse; label: string; color: string }[] = [
   { value: 'ja', label: 'Ja', color: colors.ja },
@@ -22,10 +22,11 @@ const RESPONSES: { value: VoteResponse; label: string; color: string }[] = [
 
 export default function PollDetailScreen() {
   const { groupId, eventId } = useLocalSearchParams<{ groupId: string; eventId: string }>();
-  const { data, getEvent, getMembers, getMyMemberId, isOrganizer, castVote, myVoteFor, confirmEvent, cancelPoll } =
+  const { data, getGroup, getEvent, getMembers, getMyMemberId, isOrganizer, castVote, myVoteFor, confirmEvent, cancelPoll } =
     useData();
 
   const event = getEvent(eventId);
+  const groupType = getGroup(groupId)?.groupType ?? 'random';
   const myMemberId = getMyMemberId(groupId);
   const organizer = isOrganizer(groupId);
   const options = useMemo(
@@ -50,7 +51,9 @@ export default function PollDetailScreen() {
   const myLeadingVote = myMemberId && leading ? myVoteFor(leading.option.id, myMemberId) : undefined;
   const showPreview = leading && leading.ja > 0 && myLeadingVote === 'ja';
   const previewTheme = showPreview
-    ? suggestTheme(data.events.filter((e) => e.groupId === groupId && e.status === 'confirmed' && e.id !== eventId))
+    ? groupType === 'bbq'
+      ? BBQ_FIXED_THEME
+      : suggestTheme(data.events.filter((e) => e.groupId === groupId && e.status === 'confirmed' && e.id !== eventId))
     : undefined;
 
   const iSaidJa = !!myMemberId && options.some((o) => myVoteFor(o.id, myMemberId) === 'ja');
