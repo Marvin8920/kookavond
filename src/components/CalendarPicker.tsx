@@ -95,7 +95,7 @@ export function CalendarPicker({
 const CELL = 40;
 
 const styles = StyleSheet.create({
-  wrap: { gap: spacing.sm },
+  wrap: { gap: spacing.sm, width: CELL * 7, alignSelf: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xs },
   navButton: { padding: spacing.xs },
   navText: { fontSize: 20, color: colors.primary, fontWeight: '700' },
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   dayCell: { width: CELL, height: CELL, alignItems: 'center', justifyContent: 'center' },
   dayTouchable: { borderRadius: radius.pill },
   daySelected: { backgroundColor: colors.primary },
-  dayPast: { opacity: 0.3 },
+  dayPast: {},
   dayText: { fontSize: 15, color: colors.text },
   dayTextSelected: { color: '#fff', fontWeight: '700' },
   dayTextPast: { color: colors.textMuted },
