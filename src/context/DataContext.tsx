@@ -20,7 +20,7 @@ import {
   upsertVote,
   type GroupBundle,
 } from '../storage/supabaseRepository';
-import { BBQ_FIXED_THEME } from '../types';
+import { fixedThemeFor } from '../types';
 import type { AssignmentItem, Group, GroupType, KookEvent, LocalIdentities, Member, VoteResponse } from '../types';
 
 function todayIso(): string {
@@ -289,7 +289,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       course,
     }));
 
-    const theme = groupType === 'bbq' ? BBQ_FIXED_THEME : suggestTheme(pastGroupEvents);
+    const theme = fixedThemeFor(groupType) ?? suggestTheme(pastGroupEvents);
 
     await confirmEventWithAssignments(eventId, event.groupId, chosenDate, theme, newAssignments);
     await refreshGroup(event.groupId);

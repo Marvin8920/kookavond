@@ -12,7 +12,7 @@ import { useData } from '../../../../src/context/DataContext';
 import { formatDateNl } from '../../../../src/logic/format';
 import { suggestTheme } from '../../../../src/logic/themeRotation';
 import { leadingOption, tallyOptions } from '../../../../src/logic/votes';
-import { BBQ_FIXED_THEME, type VoteResponse } from '../../../../src/types';
+import { fixedThemeFor, type VoteResponse } from '../../../../src/types';
 
 const RESPONSES: { value: VoteResponse; label: string; color: string }[] = [
   { value: 'ja', label: 'Ja', color: colors.ja },
@@ -51,9 +51,8 @@ export default function PollDetailScreen() {
   const myLeadingVote = myMemberId && leading ? myVoteFor(leading.option.id, myMemberId) : undefined;
   const showPreview = leading && leading.ja > 0 && myLeadingVote === 'ja';
   const previewTheme = showPreview
-    ? groupType === 'bbq'
-      ? BBQ_FIXED_THEME
-      : suggestTheme(data.events.filter((e) => e.groupId === groupId && e.status === 'confirmed' && e.id !== eventId))
+    ? fixedThemeFor(groupType) ??
+      suggestTheme(data.events.filter((e) => e.groupId === groupId && e.status === 'confirmed' && e.id !== eventId))
     : undefined;
 
   const iSaidJa = !!myMemberId && options.some((o) => myVoteFor(o.id, myMemberId) === 'ja');

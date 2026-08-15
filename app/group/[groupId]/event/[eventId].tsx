@@ -63,14 +63,14 @@ export default function EventDetailScreen() {
         <Text style={typography.muted}>{formatDateNl(event.confirmedDate ?? '')}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={typography.title}>{event.theme ?? 'Thema volgt'}</Text>
-          {organizer && groupType !== 'bbq' ? (
+          {organizer && groupType === 'random' ? (
             <Pressable onPress={() => setThemePickerOpen((v) => !v)}>
               <Text style={{ color: colors.primary, fontWeight: '600' }}>Wijzig</Text>
             </Pressable>
           ) : null}
         </View>
 
-        {themePickerOpen && groupType !== 'bbq' ? (
+        {themePickerOpen && groupType === 'random' ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.xs }}>
             <View style={{ flexDirection: 'row', gap: spacing.xs }}>
               {KITCHEN_THEMES.map((theme) => (

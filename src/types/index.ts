@@ -2,18 +2,20 @@
 // Alles is plat opgeslagen (losse arrays met foreign keys via id's) zodat
 // deze structuur later 1-op-1 op databasetabellen (bv. Supabase/Postgres) is te mappen.
 
-export type GroupType = 'random' | 'bbq';
+export type GroupType = 'random' | 'bbq' | 'italian';
 
-export const GROUP_TYPES: GroupType[] = ['random', 'bbq'];
+export const GROUP_TYPES: GroupType[] = ['random', 'bbq', 'italian'];
 
 export const GROUP_TYPE_LABELS: Record<GroupType, string> = {
   random: 'Random',
   bbq: 'BBQ-avond',
+  italian: 'Italiaans diner',
 };
 
 export const GROUP_TYPE_DESCRIPTIONS: Record<GroupType, string> = {
   random: 'Wisselende voor-, hoofd- en nagerechten met een roulerend keukenthema.',
   bbq: 'Amerikaanse BBQ met verdeelde vleessoorten en bijgerechten. Drank neemt iedereen zelf mee.',
+  italian: 'Klassiek Italiaans menu (antipasto, primo, secondo, contorno, dolce) met een vast Italiaans thema.',
 };
 
 /** Gangen voor groepstype "random". */
@@ -45,16 +47,42 @@ export const BBQ_PRIORITY: BbqCategory[] = ['hamburgers', 'salade', 'toetje', 's
 
 export const BBQ_FIXED_THEME = 'Amerikaanse BBQ';
 
-/** Wat een aanwezige meeneemt/doet — de gang (random) of BBQ-categorie, afhankelijk van het groepstype. */
-export type AssignmentItem = Course | BbqCategory;
+/** Klassieke gangen voor groepstype "italian". */
+export type ItalianCourse = 'antipasto' | 'primo' | 'secondo' | 'contorno' | 'dolce';
+
+export const ITALIAN_COURSE_LABELS: Record<ItalianCourse, string> = {
+  antipasto: 'Antipasto (voorgerecht)',
+  primo: 'Primo (pasta)',
+  secondo: 'Secondo (hoofdgerecht)',
+  contorno: 'Contorno (bijgerecht)',
+  dolce: 'Dolce (toetje)',
+};
+
+/** Hoofdgerecht/pasta/toetje het belangrijkst, voor- en bijgerecht komen er pas bij als de groep groot genoeg is. */
+export const ITALIAN_PRIORITY: ItalianCourse[] = ['secondo', 'primo', 'dolce', 'antipasto', 'contorno'];
+
+export const ITALIAN_FIXED_THEME: KitchenTheme = 'Italiaans';
+
+/** Wat een aanwezige meeneemt/doet, afhankelijk van het groepstype. */
+export type AssignmentItem = Course | BbqCategory | ItalianCourse;
 
 export function priorityForGroupType(groupType: GroupType): AssignmentItem[] {
-  return groupType === 'bbq' ? BBQ_PRIORITY : COURSE_PRIORITY;
+  if (groupType === 'bbq') return BBQ_PRIORITY;
+  if (groupType === 'italian') return ITALIAN_PRIORITY;
+  return COURSE_PRIORITY;
 }
 
 export function itemLabel(groupType: GroupType, item: string): string {
   if (groupType === 'bbq') return BBQ_CATEGORY_LABELS[item as BbqCategory] ?? item;
+  if (groupType === 'italian') return ITALIAN_COURSE_LABELS[item as ItalianCourse] ?? item;
   return COURSE_LABELS[item as Course] ?? item;
+}
+
+/** Groepstypes met een vast thema (geen rotatie/override) geven hier hun thema terug; "random" geeft undefined (rotatie via suggestTheme). */
+export function fixedThemeFor(groupType: GroupType): string | undefined {
+  if (groupType === 'bbq') return BBQ_FIXED_THEME;
+  if (groupType === 'italian') return ITALIAN_FIXED_THEME;
+  return undefined;
 }
 
 /** Keukenthema's, alleen van toepassing op groepstype "random" (bbq-groepen hebben een vast thema). */
