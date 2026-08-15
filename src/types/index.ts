@@ -79,3 +79,11 @@ export interface CourseAssignment {
 
 /** Welk lid dit toestel vertegenwoordigt binnen een groep (geen accounts, dus lokaal bijgehouden). */
 export type LocalIdentities = Record<string /* groupId */, string /* memberId */>;
+
+export interface ChatMessage {
+  id: string;
+  eventId: string;
+  memberId: string;
+  body: string;
+  createdAt: string;
+}

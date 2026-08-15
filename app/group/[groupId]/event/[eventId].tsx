@@ -4,6 +4,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Badge } from '../../../../src/components/Badge';
 import { Card } from '../../../../src/components/Card';
+import { ChatPanel } from '../../../../src/components/ChatPanel';
 import { Screen } from '../../../../src/components/Screen';
 import { colors, radius, spacing, typography } from '../../../../src/constants/theme';
 import { useData } from '../../../../src/context/DataContext';
@@ -13,10 +14,11 @@ import { KITCHEN_THEMES, type KitchenTheme } from '../../../../src/types';
 
 export default function EventDetailScreen() {
   const { groupId, eventId } = useLocalSearchParams<{ groupId: string; eventId: string }>();
-  const { data, getEvent, getMembers, isOrganizer, overrideTheme, swapCourseAssignments } = useData();
+  const { data, getEvent, getMembers, getMyMemberId, isOrganizer, overrideTheme, swapCourseAssignments } = useData();
 
   const event = getEvent(eventId);
   const members = getMembers(groupId);
+  const myMemberId = getMyMemberId(groupId);
   const organizer = isOrganizer(groupId);
   const [swapSelection, setSwapSelection] = useState<string | null>(null);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
@@ -37,6 +39,8 @@ export default function EventDetailScreen() {
   const attendees = assignments
     .map((a) => ({ assignment: a, member: members.find((m) => m.id === a.memberId) }))
     .filter((a): a is { assignment: typeof a.assignment; member: NonNullable<typeof a.member> } => !!a.member);
+
+  const iAmAttendee = !!myMemberId && assignments.some((a) => a.memberId === myMemberId);
 
   function handleRowPress(memberId: string) {
     if (!swapSelection) {
@@ -112,6 +116,10 @@ export default function EventDetailScreen() {
           );
         })}
       </View>
+
+      {iAmAttendee && myMemberId ? (
+        <ChatPanel eventId={eventId} groupId={groupId} myMemberId={myMemberId} members={members} />
+      ) : null}
     </Screen>
   );
 }

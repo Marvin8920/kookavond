@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import type {
+  ChatMessage,
   Course,
   CourseAssignment,
   DatePollOption,
@@ -8,7 +9,6 @@ import type {
   KookEvent,
   Member,
   Vote,
-  VoteResponse,
 } from '../types';
 
 export interface GroupBundle {
@@ -57,6 +57,10 @@ function toVote(row: any): Vote {
 
 function toCourseAssignment(row: any): CourseAssignment {
   return { id: row.id, eventId: row.event_id, memberId: row.member_id, course: row.course };
+}
+
+function toMessage(row: any): ChatMessage {
+  return { id: row.id, eventId: row.event_id, memberId: row.member_id, body: row.body, createdAt: row.created_at };
 }
 
 function throwIfError<T>(result: { data: T | null; error: { message: string } | null }): T {
@@ -181,6 +185,39 @@ export async function updateCourseAssignment(eventId: string, memberId: string, 
     .eq('event_id', eventId)
     .eq('member_id', memberId);
   if (error) throw new Error(error.message);
+}
+
+export async function fetchMessages(eventId: string): Promise<ChatMessage[]> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(toMessage);
+}
+
+export async function sendMessage(eventId: string, groupId: string, memberId: string, body: string): Promise<void> {
+  const { error } = await supabase.from('messages').insert({
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+    event_id: eventId,
+    group_id: groupId,
+    member_id: memberId,
+    body,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export function subscribeToMessages(eventId: string, onChange: () => void): () => void {
+  const channel = supabase.channel(`messages-${eventId}`).on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'messages', filter: `event_id=eq.${eventId}` },
+    onChange,
+  );
+  channel.subscribe();
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
 
 export type RealtimeTable = 'groups' | 'members' | 'events' | 'poll_options' | 'votes' | 'course_assignments';

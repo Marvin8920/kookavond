@@ -5,10 +5,12 @@ import { Pressable, Text, View } from 'react-native';
 import { Badge } from '../../../../src/components/Badge';
 import { Button } from '../../../../src/components/Button';
 import { Card } from '../../../../src/components/Card';
+import { ChatPanel } from '../../../../src/components/ChatPanel';
 import { Screen } from '../../../../src/components/Screen';
 import { colors, radius, spacing, typography } from '../../../../src/constants/theme';
 import { useData } from '../../../../src/context/DataContext';
 import { formatDateNl } from '../../../../src/logic/format';
+import { suggestTheme } from '../../../../src/logic/themeRotation';
 import { leadingOption, tallyOptions } from '../../../../src/logic/votes';
 import type { VoteResponse } from '../../../../src/types';
 
@@ -20,7 +22,8 @@ const RESPONSES: { value: VoteResponse; label: string; color: string }[] = [
 
 export default function PollDetailScreen() {
   const { groupId, eventId } = useLocalSearchParams<{ groupId: string; eventId: string }>();
-  const { data, getEvent, getMyMemberId, isOrganizer, castVote, myVoteFor, confirmEvent, cancelPoll } = useData();
+  const { data, getEvent, getMembers, getMyMemberId, isOrganizer, castVote, myVoteFor, confirmEvent, cancelPoll } =
+    useData();
 
   const event = getEvent(eventId);
   const myMemberId = getMyMemberId(groupId);
@@ -44,6 +47,14 @@ export default function PollDetailScreen() {
 
   const dateToConfirm = selectedDate ?? leading?.option.date;
 
+  const myLeadingVote = myMemberId && leading ? myVoteFor(leading.option.id, myMemberId) : undefined;
+  const showPreview = leading && leading.ja > 0 && myLeadingVote === 'ja';
+  const previewTheme = showPreview
+    ? suggestTheme(data.events.filter((e) => e.groupId === groupId && e.status === 'confirmed' && e.id !== eventId))
+    : undefined;
+
+  const iSaidJa = !!myMemberId && options.some((o) => myVoteFor(o.id, myMemberId) === 'ja');
+
   async function handleConfirm() {
     if (!dateToConfirm) return;
     setConfirming(true);
@@ -59,6 +70,17 @@ export default function PollDetailScreen() {
   return (
     <Screen>
       <Text style={typography.muted}>Geef per datum aan of je kunt.</Text>
+
+      {showPreview && leading && previewTheme ? (
+        <Card style={{ borderColor: colors.accent, backgroundColor: `${colors.accent}0D` }}>
+          <Badge label="Voorlopig, nog niet bevestigd" color={colors.accent} />
+          <Text style={typography.heading}>Als dit doorgaat: {formatDateNl(leading.option.date)}</Text>
+          <Text style={typography.body}>Thema wordt waarschijnlijk: {previewTheme}</Text>
+          <Text style={typography.muted}>
+            Jij hebt ja gezegd op de datum met de meeste stemmen. De organisator moet dit nog bevestigen.
+          </Text>
+        </Card>
+      ) : null}
 
       <View style={{ gap: spacing.sm }}>
         {tallies.map(({ option, ja, nee, misschien }) => {
@@ -125,6 +147,12 @@ export default function PollDetailScreen() {
           <Button title="Verwijder deze prikker" variant="ghost" onPress={handleCancel} />
         </Card>
       ) : null}
+
+      {iSaidJa && myMemberId ? (
+        <ChatPanel eventId={eventId} groupId={groupId} myMemberId={myMemberId} members={getMembers(groupId)} />
+      ) : (
+        <Text style={typography.muted}>Stem ja op een datum om mee te chatten met de rest.</Text>
+      )}
     </Screen>
   );
 }
