@@ -23,11 +23,15 @@ export default function GroupOverviewScreen() {
     getActivePoll,
     getUpcomingConfirmed,
     getHistory,
+    isOrganizer,
+    deleteGroup,
     data,
   } = useData();
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [showLinkFallback, setShowLinkFallback] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const group = getGroup(groupId);
   const members = getMembers(groupId);
@@ -44,6 +48,13 @@ export default function GroupOverviewScreen() {
   }
 
   const canProposeNew = !activePoll && !upcoming;
+  const organizer = isOrganizer(groupId);
+
+  async function handleDeleteGroup() {
+    setDeleting(true);
+    await deleteGroup(groupId);
+    router.replace('/');
+  }
 
   async function copyCode() {
     try {
@@ -161,6 +172,29 @@ export default function GroupOverviewScreen() {
             </Pressable>
           ))}
         </View>
+      ) : null}
+
+      {organizer ? (
+        <Card style={{ borderColor: colors.danger }}>
+          {confirmingDelete ? (
+            <>
+              <Text style={[typography.body, { fontWeight: '700' }]}>Groep definitief verwijderen?</Text>
+              <Text style={typography.muted}>
+                Dit verwijdert de groep, alle leden, kookavonden, stemmen en chatberichten voor iedereen. Dit kan
+                niet ongedaan gemaakt worden.
+              </Text>
+              <Button
+                title="Ja, verwijder definitief"
+                variant="danger"
+                onPress={handleDeleteGroup}
+                loading={deleting}
+              />
+              <Button title="Annuleren" variant="ghost" onPress={() => setConfirmingDelete(false)} />
+            </>
+          ) : (
+            <Button title="Groep verwijderen" variant="danger" onPress={() => setConfirmingDelete(true)} />
+          )}
+        </Card>
       ) : null}
     </Screen>
   );

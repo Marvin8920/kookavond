@@ -107,6 +107,12 @@ export async function insertGroup(group: Group): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Verwijdert de groep en (via on-delete-cascade) alle leden/kookavonden/stemmen/berichten erbinnen. */
+export async function deleteGroup(groupId: string): Promise<void> {
+  const { error } = await supabase.from('groups').delete().eq('id', groupId);
+  if (error) throw new Error(error.message);
+}
+
 export async function insertMember(member: Member): Promise<void> {
   const { error } = await supabase.from('members').insert({
     id: member.id,

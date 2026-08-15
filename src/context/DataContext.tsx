@@ -9,6 +9,7 @@ import type { KookavondData } from '../storage/schema';
 import {
   confirmEventWithAssignments,
   deleteEvent,
+  deleteGroup as remoteDeleteGroup,
   fetchGroupBundle,
   findGroupByCode,
   insertEventWithOptions,
@@ -52,6 +53,7 @@ interface DataContextValue {
 
   createGroup: (groupName: string, myName: string, groupType: GroupType) => Promise<string>;
   joinGroup: (code: string, myName: string) => Promise<string>;
+  deleteGroup: (groupId: string) => Promise<void>;
 
   getActivePoll: (groupId: string) => KookEvent | undefined;
   getUpcomingConfirmed: (groupId: string) => KookEvent | undefined;
@@ -190,6 +192,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     return group.id;
   }, [identities, refreshGroup, ensureSubscribed]);
+
+  const deleteGroup = useCallback(async (groupId: string) => {
+    await remoteDeleteGroup(groupId);
+
+    subscriptions.current[groupId]?.();
+    delete subscriptions.current[groupId];
+
+    setBundles((prev) => {
+      const next = { ...prev };
+      delete next[groupId];
+      return next;
+    });
+
+    const nextIdentities = { ...identities };
+    delete nextIdentities[groupId];
+    setIdentities(nextIdentities);
+    await saveIdentities(nextIdentities);
+  }, [identities]);
 
   const getActivePoll = useCallback(
     (groupId: string) => data.events.find((e) => e.groupId === groupId && e.status === 'poll'),
@@ -331,6 +351,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     isOrganizer,
     createGroup,
     joinGroup,
+    deleteGroup,
     getActivePoll,
     getUpcomingConfirmed,
     getHistory,
