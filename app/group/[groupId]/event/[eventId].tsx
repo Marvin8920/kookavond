@@ -171,9 +171,12 @@ export default function EventDetailScreen() {
             </Pressable>
           );
         })}
+        {myMemberId && !iAmAttendee ? (
+          <Text style={typography.muted}>Jij hebt geen gang toegewezen voor deze kookavond.</Text>
+        ) : null}
       </View>
 
-      {iAmAttendee && myMemberId ? (
+      {myMemberId ? (
         <ChatPanel eventId={eventId} groupId={groupId} myMemberId={myMemberId} members={members} />
       ) : null}
     </Screen>
