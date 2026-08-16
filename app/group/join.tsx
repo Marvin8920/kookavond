@@ -1,12 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
-import { Text } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Text } from 'react-native';
 
 import { Button } from '../../src/components/Button';
 import { Screen } from '../../src/components/Screen';
 import { TextField } from '../../src/components/TextField';
 import { colors, typography } from '../../src/constants/theme';
 import { useData } from '../../src/context/DataContext';
+import { hasSeenOnboarding } from '../../src/storage/onboardingStore';
 
 export default function JoinGroupScreen() {
   const { joinGroup } = useData();
@@ -15,8 +16,33 @@ export default function JoinGroupScreen() {
   const [myName, setMyName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    hasSeenOnboarding().then((seen) => {
+      if (cancelled) return;
+      if (seen) {
+        setOnboardingChecked(true);
+      } else {
+        router.replace({ pathname: '/onboarding', params: codeParam ? { code: codeParam } : {} });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const canSubmit = code.trim().length > 0 && myName.trim().length > 0;
+
+  if (!onboardingChecked) {
+    return (
+      <Screen scroll={false}>
+        <ActivityIndicator color={colors.primary} />
+      </Screen>
+    );
+  }
 
   async function handleJoin() {
     if (!canSubmit) return;

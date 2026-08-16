@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -26,13 +26,18 @@ const PAGES = [
 ];
 
 export default function OnboardingScreen() {
+  const { code: joinCode } = useLocalSearchParams<{ code?: string }>();
   const [page, setPage] = useState(0);
   const isLast = page === PAGES.length - 1;
   const current = PAGES[page];
 
   async function finish() {
     await markOnboardingSeen();
-    router.replace('/');
+    if (joinCode) {
+      router.replace({ pathname: '/group/join', params: { code: joinCode } });
+    } else {
+      router.replace('/');
+    }
   }
 
   function handleNext() {
