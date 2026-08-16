@@ -1,15 +1,19 @@
+import { File, Paths } from 'expo-file-system';
 import { useLocalSearchParams } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Badge } from '../../../../src/components/Badge';
+import { Button } from '../../../../src/components/Button';
 import { Card } from '../../../../src/components/Card';
 import { ChatPanel } from '../../../../src/components/ChatPanel';
 import { Screen } from '../../../../src/components/Screen';
 import { colors, radius, spacing, typography } from '../../../../src/constants/theme';
 import { useData } from '../../../../src/context/DataContext';
 import { itemLabel, KITCHEN_THEMES } from '../../../../src/types';
-import { formatDateNl } from '../../../../src/logic/format';
+import { buildEventIcs } from '../../../../src/logic/calendarExport';
+import { formatDateNl, toIsoDate } from '../../../../src/logic/format';
 
 export default function EventDetailScreen() {
   const { groupId, eventId } = useLocalSearchParams<{ groupId: string; eventId: string }>();
@@ -24,6 +28,7 @@ export default function EventDetailScreen() {
   const organizer = isOrganizer(groupId);
   const [swapSelection, setSwapSelection] = useState<string | null>(null);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [addingToCalendar, setAddingToCalendar] = useState(false);
 
   const assignments = useMemo(
     () => data.courseAssignments.filter((ca) => ca.eventId === eventId),
@@ -43,6 +48,43 @@ export default function EventDetailScreen() {
     .filter((a): a is { assignment: typeof a.assignment; member: NonNullable<typeof a.member> } => !!a.member);
 
   const iAmAttendee = !!myMemberId && assignments.some((a) => a.memberId === myMemberId);
+  const isUpcoming = !!event.confirmedDate && event.confirmedDate >= toIsoDate(new Date());
+
+  async function handleAddToCalendar() {
+    if (!event?.confirmedDate) return;
+    setAddingToCalendar(true);
+    try {
+      const ics = buildEventIcs({
+        eventId,
+        groupName: group?.name ?? 'Kookavond',
+        date: event.confirmedDate,
+        theme: event.theme,
+        assignments: attendees.map((a) => ({
+          name: a.member.name,
+          item: itemLabel(groupType, a.assignment.course),
+        })),
+      });
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `kookavond-${event.confirmedDate}.ics`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        const file = new File(Paths.cache, `kookavond-${event.confirmedDate}-${Date.now()}.ics`);
+        file.create();
+        file.write(ics);
+        await Sharing.shareAsync(file.uri, { mimeType: 'text/calendar', dialogTitle: 'Voeg toe aan agenda' });
+      }
+    } finally {
+      setAddingToCalendar(false);
+    }
+  }
 
   function handleRowPress(memberId: string) {
     if (!swapSelection) {
@@ -96,6 +138,15 @@ export default function EventDetailScreen() {
           </ScrollView>
         ) : null}
       </Card>
+
+      {isUpcoming ? (
+        <Button
+          title="Voeg toe aan agenda"
+          variant="secondary"
+          onPress={handleAddToCalendar}
+          loading={addingToCalendar}
+        />
+      ) : null}
 
       <View style={{ gap: spacing.sm }}>
         <Text style={typography.heading}>{groupType === 'bbq' ? 'Wie neemt wat mee' : 'Gangenverdeling'}</Text>
