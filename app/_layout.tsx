@@ -21,6 +21,7 @@ export default function RootLayout() {
             }}
           >
             <Stack.Screen name="index" options={{ title: 'Kookavond' }} />
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             <Stack.Screen name="group/new" options={{ title: 'Nieuwe groep', presentation: 'modal' }} />
             <Stack.Screen name="group/join" options={{ title: 'Groep joinen', presentation: 'modal' }} />
             <Stack.Screen name="group/[groupId]" options={{ headerShown: false }} />

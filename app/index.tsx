@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
 
 import { Button } from '../src/components/Button';
@@ -8,11 +8,28 @@ import { EmptyState } from '../src/components/EmptyState';
 import { Screen } from '../src/components/Screen';
 import { colors, spacing, typography } from '../src/constants/theme';
 import { useData } from '../src/context/DataContext';
+import { hasSeenOnboarding } from '../src/storage/onboardingStore';
 
 export default function HomeScreen() {
   const { loading, myGroups, getMembers } = useData();
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
-  if (loading) {
+  useEffect(() => {
+    let cancelled = false;
+    hasSeenOnboarding().then((seen) => {
+      if (cancelled) return;
+      if (seen) {
+        setOnboardingChecked(true);
+      } else {
+        router.replace('/onboarding');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!onboardingChecked || loading) {
     return (
       <Screen scroll={false}>
         <ActivityIndicator color={colors.primary} />
