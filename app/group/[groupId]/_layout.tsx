@@ -1,7 +1,8 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React from 'react';
+import { Pressable, Text } from 'react-native';
 
-import { colors } from '../../../src/constants/theme';
+import { colors, spacing } from '../../../src/constants/theme';
 import { useData } from '../../../src/context/DataContext';
 
 export default function GroupLayout() {
@@ -18,7 +19,17 @@ export default function GroupLayout() {
         contentStyle: { backgroundColor: colors.background },
       }}
     >
-      <Stack.Screen name="index" options={{ title: group?.name ?? 'Groep' }} />
+      <Stack.Screen
+        name="index"
+        options={{
+          title: group?.name ?? 'Groep',
+          headerLeft: () => (
+            <Pressable onPress={() => router.replace('/')} hitSlop={12} style={{ paddingRight: spacing.md }}>
+              <Text style={{ color: colors.primary, fontSize: 24, fontWeight: '600' }}>‹</Text>
+            </Pressable>
+          ),
+        }}
+      />
       <Stack.Screen name="members" options={{ title: 'Leden' }} />
       <Stack.Screen name="history" options={{ title: 'Geschiedenis' }} />
       <Stack.Screen name="poll/new" options={{ title: 'Kookavond voorstellen', presentation: 'modal' }} />
